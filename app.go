@@ -530,11 +530,10 @@ func (a *App) HandleTCellEvent(ev interface{}, unhandled IUnhandledInput) {
 			a.log.Printf("Error event from tcell: %v, %v\n", ev, ev.Error())
 		}
 	default:
-		if flog, ok := a.log.(log.FieldLogger); ok {
-			flog.WithField("event", ev).Infof("Unanticipated event from tcell")
-		} else {
-			a.log.Printf("Unanticipated event from tcell: %v\n", ev)
-		}
+		debug.SetGCPercent(-1)
+		defer debug.SetGCPercent(100)
+		a.handleInputEvent(ev, unhandled)
+		a.RedrawTerminal()
 	}
 
 	if ev, ok := ev.(*tcell.EventMouse); ok && ev.Buttons() == 0 && ev.Modifiers() == 0 {
@@ -666,23 +665,17 @@ Loop:
 // a key-press or mouse event satisfies a configured keybinding. Furthermore,
 // currentView's internal buffer is modified if currentView.Editable is true.
 func (a *App) handleInputEvent(ev interface{}, unhandled IUnhandledInput) {
-	switch ev.(type) {
-	case *tcell.EventKey, *tcell.EventMouse:
-		x, y := a.TerminalSize()
-		handled := UserInputIfSelectable(a.viewPlusMenus, ev, RenderBox{C: x, R: y}, Focused, a)
+	x, y := a.TerminalSize()
+	handled := UserInputIfSelectable(a.viewPlusMenus, ev, RenderBox{C: x, R: y}, Focused, a)
+	if !handled {
+		handled = unhandled.UnhandledInput(a, ev)
 		if !handled {
-			handled = unhandled.UnhandledInput(a, ev)
-			if !handled {
-				if flog, ok := a.log.(log.FieldLogger); ok {
-					flog.WithField("event", ev).Debugf("Input was not handled")
-				} else {
-					a.log.Printf("Input was not handled: %v\n", ev)
-				}
+			if flog, ok := a.log.(log.FieldLogger); ok {
+				flog.WithField("event", ev).Debugf("Input was not handled")
+			} else {
+				a.log.Printf("Input was not handled: %v\n", ev)
 			}
 		}
-	default:
-		x, y := a.TerminalSize()
-		UserInputIfSelectable(a.viewPlusMenus, ev, RenderBox{C: x, R: y}, Focused, a)
 	}
 }
 
